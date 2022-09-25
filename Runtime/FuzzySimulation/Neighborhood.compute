@@ -1,0 +1,155 @@
+#pragma kernel Kernel2n
+#pragma kernel OctreeLeafsKernel
+#pragma kernel OctreeNeighborsKernel
+
+RWStructuredBuffer<float3> Position;
+RWStructuredBuffer<float3> Direction;
+RWStructuredBuffer<float> PerceptionRadius;
+RWStructuredBuffer<float> HorizontalFOV;
+RWStructuredBuffer<float> VerticalFOV;
+
+Texture3D<half4> Octree;
+
+RWTexture2D<half4> TreeLeafs;
+RWTexture2D<half4> TreeNeighbors;
+
+float xmin;
+float xmax;
+float ymin;
+float ymax;
+float zmin;
+float zmax;
+
+uint numberToSpawn;
+uint neighborhoodCount;
+uint axis;
+uint treeDepth;
+uint treeLeafsCount;
+
+RWStructuredBuffer<int> Neighborhood;
+
+float3 ProjectOnPlane(float3 vec, float3 nor) {
+    return vec - nor * dot(vec, nor);
+}
+
+[numthreads(64, 1, 1)]
+void Kernel2n (uint3 id : SV_DispatchThreadID) {
+
+    float3 pos = Position[id.x];
+    float3 dir = Direction[id.x];
+    float radii = PerceptionRadius[id.x];
+    float hFOV = HorizontalFOV[id.x];
+    float vFOV = VerticalFOV[id.x];
+
+    float3 r = normalize(cross(float3(0, 1, 0), dir));
+    float3 u = normalize(cross(dir, r));
+
+    for (uint i = 0; i < numberToSpawn; i++) {
+        TreeNeighbors[uint2(id.x, i)] = half4(0, 0, 0, 0);
+
+        float3 npos = Position[i];
+
+        if (distance(pos, npos) <= radii) {
+
+            float hangle = degrees(acos(dot(dir, ProjectOnPlane(npos - pos, u)) / (length(dir) * length(ProjectOnPlane(npos - pos, u)))));
+            float vangle = degrees(acos(dot(dir, ProjectOnPlane(npos - pos, r)) / (length(dir) * length(ProjectOnPlane(npos - pos, r)))));
+
+            if (hangle <= hFOV / 2 && vangle <= vFOV / 2) {
+                TreeNeighbors[uint2(id.x, i)] = half4(1, 0, 0, 0);
+            }
+        }
+    }
+
+    for (uint k = 0; k < neighborhoodCount; k++) {
+        Neighborhood[id.x * neighborhoodCount + k] = -1;
+    }
+
+    uint ni = 0;
+    uint ai = 0;
+
+    while (ai < numberToSpawn && ni < neighborhoodCount) {
+        if (TreeNeighbors[uint2(id.x, ai)].x > 0 && ai != id.x) {
+            Neighborhood[id.x * neighborhoodCount + ni] = ai;
+            ni++;
+        }
+        ai++;
+    }
+}
+
+[numthreads(64, 1, 1)]
+void OctreeLeafsKernel (uint3 id : SV_DispatchThreadID) {
+
+    for (uint i = 0; i < treeLeafsCount; i++) {
+        TreeLeafs[uint2(i, id.x)] = half4(0, 0, 0, 0);
+    }
+
+    float3 pos = Position[id.x];
+
+    float3 I = float3(0, 0, 0);
+    float3 M = float3((pos.x - xmin) / (xmax - xmin), (pos.y - ymin) / (ymax - ymin), (pos.z - zmin) / (zmax - zmin));
+
+    int N = 2;
+
+    for (uint d = 0; d < treeDepth; d++) {
+        float3 P = (I + frac(M * pow(N, d))) * 2;
+        I.x = Octree[P].x;
+    }
+
+    TreeLeafs[uint2(I.x, id.x)] = half4(1, 0, 0, 0);
+}
+
+[numthreads(64, 1, 1)]
+void OctreeNeighborsKernel (uint3 id : SV_DispatchThreadID) {
+
+    float3 pos = Position[id.x];
+    float3 dir = Direction[id.x];
+    float radii = PerceptionRadius[id.x];
+    float hFOV = HorizontalFOV[id.x];
+    float vFOV = VerticalFOV[id.x];
+
+    float3 r = normalize(cross(float3(0, 1, 0), dir));
+    float3 u = normalize(cross(dir, r));
+    
+    float3 I = float3(0, 0, 0);
+    float3 M = float3((pos.x - xmin) / (xmax - xmin), (pos.y - ymin) / (ymax - ymin), (pos.z - zmin) / (zmax - zmin));
+
+    int N = 2;
+
+    for (uint d = 0; d < treeDepth; d++) {
+        float3 P = (I + frac(M * pow(N, d))) * 2;
+        I.x = Octree[P].x;
+    }
+
+    for (uint i = 0; i < numberToSpawn; i++) {
+        TreeNeighbors[uint2(id.x, i)] = half4(0, 0, 0, 0);
+    }
+
+    for (uint j = 0; j < numberToSpawn; j++) {
+        TreeNeighbors[uint2(id.x, j)] = TreeLeafs[uint2(I.x, j)];
+    }
+
+    for (uint k = 0; k < neighborhoodCount; k++) {
+        Neighborhood[id.x * neighborhoodCount + k] = -1;
+    }
+
+    uint ni = 0;
+    uint ai = 0;
+
+    while (ai < numberToSpawn && ni < neighborhoodCount) {
+        if (TreeNeighbors[uint2(id.x, ai)].x > 0 && ai != id.x) {
+            float3 npos = Position[ai];
+
+            if (distance(pos, npos) <= radii) {
+
+                float hangle = degrees(acos(dot(dir, ProjectOnPlane(npos - pos, u)) / (length(dir) * length(ProjectOnPlane(npos - pos, u)))));
+                float vangle = degrees(acos(dot(dir, ProjectOnPlane(npos - pos, r)) / (length(dir) * length(ProjectOnPlane(npos - pos, r)))));
+
+                if (hangle <= hFOV / 2 && vangle <= vFOV / 2) {
+                    Neighborhood[id.x * neighborhoodCount + ni] = ai;
+                    ni++;
+                }
+            }
+        }
+        ai++;
+    }
+}

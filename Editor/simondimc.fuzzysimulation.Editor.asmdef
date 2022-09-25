@@ -1,0 +1,16 @@
+{
+    "name": "simondimc.fuzzysimulation.Editor",
+    "rootNamespace": "",
+    "references": [
+        "GUID:9f3b4a3179f64034f8faecdf6bd5b889"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
