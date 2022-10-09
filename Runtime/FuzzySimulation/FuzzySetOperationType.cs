@@ -3,7 +3,7 @@ using System;
 
 public interface FuzzySetOperations {
 
-    float? Union(List<NodeTree> nodes, Func<NodeTree, float?> CalcTree);
-    float? Intersection(List<NodeTree> nodes, Func<NodeTree, float?> CalcTree);
+    float? Union(List<NodeTree> nodes, int instance, bool conNull, Func<NodeTree, int, float?> CalcTree);
+    float? Intersection(List<NodeTree> nodes, int instance, bool conNull, Func<NodeTree, int, float?> CalcTree);
 
 }

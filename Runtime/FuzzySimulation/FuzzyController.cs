@@ -18,7 +18,8 @@ public class FuzzyController : ScriptableObject {
 
     private List<NodeTree> trees;
     private Dictionary<string, NodeTree> guidTree;
-    private Dictionary<string, float?> variableGuidValue;
+    private Dictionary<int, Dictionary<string, float?>> instanceInputVariableGuidValue;
+    private Dictionary<string, float?> outputVariableGuidValue;
     private Dictionary<string, Variable> variableNameVariable;
 
     private Dictionary<string, string> driveNameDrive;
@@ -54,7 +55,8 @@ public class FuzzyController : ScriptableObject {
         this.fuzzySetOperations = new MinimumMaximumFuzzySetOperations();
 
         this.variableSamples = new Dictionary<string, List<Sample>>();
-        this.variableGuidValue = new Dictionary<string, float?>();
+        this.instanceInputVariableGuidValue = new Dictionary<int, Dictionary<string, float?>>();
+        this.outputVariableGuidValue = new Dictionary<string, float?>();
         this.variableNameVariable = new Dictionary<string, Variable>();
         this.variablesMap = new Dictionary<string, Variable>();
         this.variableValuesMap = new Dictionary<string, VariableValue>();
@@ -75,13 +77,12 @@ public class FuzzyController : ScriptableObject {
         foreach (Variable inputVariable in this.inputVariables) {
             this.variablesMap.Add(inputVariable.guid, inputVariable);
             this.variableNameVariable.Add(inputVariable.name, inputVariable);
-            this.variableGuidValue.Add(inputVariable.guid, null);
         }
 
         foreach (Variable outputVariable in this.outputVariables) {
             this.variablesMap.Add(outputVariable.guid, outputVariable);
             this.variableNameVariable.Add(outputVariable.name, outputVariable);
-            this.variableGuidValue.Add(outputVariable.guid, null);
+            this.outputVariableGuidValue.Add(outputVariable.guid, null);
         }
 
         foreach (VariableValue variableValue in this.variableValues) {
@@ -220,45 +221,60 @@ public class FuzzyController : ScriptableObject {
         }
     }
 
-    public bool SetValue(string variableName, float value) {
+    public bool SetValue(int instance, string variableName, float value) {
         if (this.variableNameVariable.ContainsKey(variableName)) {
             Variable variable = this.variableNameVariable[variableName];
             if (variable != null && value >= variable.lowerBound && value <= variable.upperBound) {
-                this.variableGuidValue[variable.guid] = value;
+                if (!this.instanceInputVariableGuidValue.ContainsKey(instance)) {
+                    this.instanceInputVariableGuidValue[instance] = new Dictionary<string, float?>();
+                }
+                this.instanceInputVariableGuidValue[instance][variable.guid] = value;
                 return true;
             }
         }
         return false;
     }
 
+    public float? GetValue(string variableName) {
+        if (this.variableNameVariable.ContainsKey(variableName)) {
+            Variable variable = this.variableNameVariable[variableName];
+            if (variable != null) {
+                return this.outputVariableGuidValue[variable.guid];
+            }
+        }
+        return null;
+    }
+
     public void Step() {
         this.variableSamples.Clear();
 
-        foreach (NodeTree tree in this.trees) {
-            if (tree.type != NodeTreeType.GraphNode) continue;
+        foreach (int instance in this.instanceInputVariableGuidValue.Keys) {
+            foreach (NodeTree tree in this.trees) {
+                if (tree.type != NodeTreeType.GraphNode) continue;
 
-            float? v = null;
-            v = this.fuzzySetOperations.Union(tree.children, CalcTree);
-            if (v == null) continue;
+                float? v = null;
+                v = this.fuzzySetOperations.Union(tree.children, instance, true, CalcTree);
+                if (v == null) continue;
 
-            GraphNode graphNode = (GraphNode)tree.node;
+                GraphNode graphNode = (GraphNode)tree.node;
 
-            Sample sample = null;
+                Sample sample = null;
 
-            switch (this.fuzzySetOperationsMode) {
-                case FuzzySetOperationsMode.MinimumAndMaximum:
-                    sample = this.variableValueYMinSample[graphNode.variableValueGuid][Mathf.RoundToInt(v.Value / yStep)];
-                    break;
-                case FuzzySetOperationsMode.AlgebraicProductAndSum:
-                    sample = this.variableValueYProdSample[graphNode.variableValueGuid][Mathf.RoundToInt(v.Value / yStep)];
-                    break;
-            }
-
-            if (sample != null) {
-                if (!variableSamples.ContainsKey(graphNode.variableGuid)) {
-                    variableSamples[graphNode.variableGuid] = new List<Sample>();
+                switch (this.fuzzySetOperationsMode) {
+                    case FuzzySetOperationsMode.MinimumAndMaximum:
+                        sample = this.variableValueYMinSample[graphNode.variableValueGuid][Mathf.RoundToInt(v.Value / yStep)];
+                        break;
+                    case FuzzySetOperationsMode.AlgebraicProductAndSum:
+                        sample = this.variableValueYProdSample[graphNode.variableValueGuid][Mathf.RoundToInt(v.Value / yStep)];
+                        break;
                 }
-                variableSamples[graphNode.variableGuid].Add(sample);
+
+                if (sample != null) {
+                    if (!variableSamples.ContainsKey(graphNode.variableGuid)) {
+                        variableSamples[graphNode.variableGuid] = new List<Sample>();
+                    }
+                    variableSamples[graphNode.variableGuid].Add(sample);
+                }
             }
         }
 
@@ -282,8 +298,10 @@ public class FuzzyController : ScriptableObject {
                     }
                 }
             }
-            this.variableGuidValue[guid] = this.CenterOfGravity(x, y);
+            this.outputVariableGuidValue[guid] = this.CenterOfGravity(x, y);
         }
+
+        this.instanceInputVariableGuidValue.Clear();
     }
 
     private float? CenterOfGravity(float[] x, float[] y) {
@@ -298,13 +316,17 @@ public class FuzzyController : ScriptableObject {
         return cog;
     }
 
-    private float? CalcTree(NodeTree tree) {
+    private float? CalcTree(NodeTree tree, int instance) {
         if (tree.type == NodeTreeType.GraphNode) {
             GraphNode graphNode = (GraphNode)tree.node;
 
             Variable variable = this.variablesMap[graphNode.variableGuid];
 
-            float? value = this.variableGuidValue[graphNode.variableGuid];
+            float? value = null;
+            
+            if (this.instanceInputVariableGuidValue[instance].ContainsKey(graphNode.variableGuid)) {
+                value = this.instanceInputVariableGuidValue[instance][graphNode.variableGuid];
+            }
 
             if (value == null) return null;
 
@@ -319,27 +341,17 @@ public class FuzzyController : ScriptableObject {
 
             return v;
         } else if (tree.type == NodeTreeType.AndNode) {
-            return this.fuzzySetOperations.Intersection(tree.children, CalcTree);
+            return this.fuzzySetOperations.Intersection(tree.children, instance, false, CalcTree);
         } else if (tree.type == NodeTreeType.OrNode) {
-            return this.fuzzySetOperations.Union(tree.children, CalcTree);
+            return this.fuzzySetOperations.Union(tree.children, instance, false, CalcTree);
         } else if (tree.type == NodeTreeType.NotNode) {
             if (tree.children.Count != 1) return null;
-            float? v = CalcTree(tree.children[0]);
+            float? v = CalcTree(tree.children[0], instance);
             if (v == null) return null;
             return 1 - v;
         } else {
             return null;
         }
-    }
-
-    public float? GetValue(string variableName) {
-        if (this.variableNameVariable.ContainsKey(variableName)) {
-            Variable variable = this.variableNameVariable[variableName];
-            if (variable != null) {
-                return this.variableGuidValue[variable.guid];
-            }
-        }
-        return null;
     }
 
     public IEnumerable<Variable> GetInputVariables() {
