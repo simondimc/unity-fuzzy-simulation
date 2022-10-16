@@ -184,11 +184,12 @@ public class AgentManager : MonoBehaviour {
 
     private void SetNeighborsCPU2n() {
         foreach (Agent agent in this.agentsAgentScripts) {
-            Vector3 r = Vector3.Cross(Vector3.up, agent.Direction).normalized;
-            Vector3 u = Vector3.Cross(agent.Direction, r).normalized;
+            Vector3 f = agent.Direction.normalized;
+            Vector3 l = Vector3.Cross(f, Vector3.up).normalized;
+            Vector3 u = Vector3.Cross(l, f).normalized;
             List<Agent> neighbors = new List<Agent>();
             foreach (Agent otherAgent in this.agentsAgentScripts) {
-                if (Utils.AgentInAgentFieldOfView(agent, otherAgent, r, u)) {
+                if (Utils.AgentInAgentFieldOfView(agent, otherAgent, f, l, u)) {
                     neighbors.Add(otherAgent);
                 }
             }

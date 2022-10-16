@@ -28,10 +28,6 @@ uint treeLeafsCount;
 
 RWStructuredBuffer<int> Neighborhood;
 
-float3 ProjectOnPlane(float3 vec, float3 nor) {
-    return vec - nor * dot(vec, nor);
-}
-
 [numthreads(64, 1, 1)]
 void Kernel2n (uint3 id : SV_DispatchThreadID) {
 
@@ -41,8 +37,9 @@ void Kernel2n (uint3 id : SV_DispatchThreadID) {
     float hFOV = HorizontalFOV[id.x];
     float vFOV = VerticalFOV[id.x];
 
-    float3 r = normalize(cross(float3(0, 1, 0), dir));
-    float3 u = normalize(cross(dir, r));
+    float3 x = normalize(dir);
+    float3 z = normalize(cross(x, float3(0, 1, 0)));
+    float3 y = normalize(cross(z, x));
 
     for (uint i = 0; i < numberToSpawn; i++) {
         TreeNeighbors[uint2(id.x, i)] = half4(0, 0, 0, 0);
@@ -51,10 +48,20 @@ void Kernel2n (uint3 id : SV_DispatchThreadID) {
 
         if (distance(pos, npos) <= radii) {
 
-            float hangle = degrees(acos(dot(dir, ProjectOnPlane(npos - pos, u)) / (length(dir) * length(ProjectOnPlane(npos - pos, u)))));
-            float vangle = degrees(acos(dot(dir, ProjectOnPlane(npos - pos, r)) / (length(dir) * length(ProjectOnPlane(npos - pos, r)))));
+            float3 v = npos - pos;
 
-            if (hangle <= hFOV / 2 && vangle <= vFOV / 2) {
+            float3 p = float3(
+                x.x * v.x + x.y * v.y + x.z * v.z,
+                y.x * v.x + y.y * v.y + y.z * v.z,
+                z.x * v.x + z.y * v.y + z.z * v.z
+            );
+
+            float a_y = degrees(atan2(p.z, p.x));
+            a_y *= -1;
+
+            float a_z = degrees(atan2(p.y, p.x));
+
+            if (abs(a_y) <= hFOV / 2 && abs(a_z) <= vFOV / 2) {
                 TreeNeighbors[uint2(id.x, i)] = half4(1, 0, 0, 0);
             }
         }
@@ -107,8 +114,9 @@ void OctreeNeighborsKernel (uint3 id : SV_DispatchThreadID) {
     float hFOV = HorizontalFOV[id.x];
     float vFOV = VerticalFOV[id.x];
 
-    float3 r = normalize(cross(float3(0, 1, 0), dir));
-    float3 u = normalize(cross(dir, r));
+    float3 x = normalize(dir);
+    float3 z = normalize(cross(x, float3(0, 1, 0)));
+    float3 y = normalize(cross(z, x));
     
     float3 I = float3(0, 0, 0);
     float3 M = float3((pos.x - xmin) / (xmax - xmin), (pos.y - ymin) / (ymax - ymin), (pos.z - zmin) / (zmax - zmin));
@@ -141,10 +149,20 @@ void OctreeNeighborsKernel (uint3 id : SV_DispatchThreadID) {
 
             if (distance(pos, npos) <= radii) {
 
-                float hangle = degrees(acos(dot(dir, ProjectOnPlane(npos - pos, u)) / (length(dir) * length(ProjectOnPlane(npos - pos, u)))));
-                float vangle = degrees(acos(dot(dir, ProjectOnPlane(npos - pos, r)) / (length(dir) * length(ProjectOnPlane(npos - pos, r)))));
+                float3 v = npos - pos;
 
-                if (hangle <= hFOV / 2 && vangle <= vFOV / 2) {
+                float3 p = float3(
+                    x.x * v.x + x.y * v.y + x.z * v.z,
+                    y.x * v.x + y.y * v.y + y.z * v.z,
+                    z.x * v.x + z.y * v.y + z.z * v.z
+                );
+
+                float a_y = degrees(atan2(p.z, p.x));
+                a_y *= -1;
+
+                float a_z = degrees(atan2(p.y, p.x));
+
+                if (abs(a_y) <= hFOV / 2 && abs(a_z) <= vFOV / 2) {
                     Neighborhood[id.x * neighborhoodCount + ni] = ai;
                     ni++;
                 }

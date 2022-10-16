@@ -46,14 +46,15 @@ class Octree {
 
     private void InternalGetNeighbors(Agent agent, bool directToNode, List<Agent> neighbors) {
 
-        Vector3 r = Vector3.Cross(Vector3.up, agent.Direction).normalized;
-        Vector3 u = Vector3.Cross(agent.Direction, r).normalized;
+        Vector3 f = agent.Direction.normalized;
+        Vector3 l = Vector3.Cross(f, Vector3.up).normalized;
+        Vector3 u = Vector3.Cross(l, f).normalized;
 
         if (directToNode) {
 
             if (this.maxDepth <= 0 || this.agents.Count > 0) {
                 foreach (Agent agentInNode in this.agents) {
-                    if (Utils.AgentInAgentFieldOfView(agent, agentInNode, r, u)) {
+                    if (Utils.AgentInAgentFieldOfView(agent, agentInNode, f, l, u)) {
                         neighbors.Add(agentInNode);
                     }
                 }
@@ -114,7 +115,7 @@ class Octree {
         } else {
 
             foreach (Agent agentInNode in this.agents) {
-                if (Utils.AgentInAgentFieldOfView(agent, agentInNode, r, u)) {
+                if (Utils.AgentInAgentFieldOfView(agent, agentInNode, f, l, u)) {
                     neighbors.Add(agentInNode);
                 }
             }

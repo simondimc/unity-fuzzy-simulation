@@ -77,24 +77,31 @@ public static class Utils {
         return new Vector3(point.x - k * plane.x, point.y - k * plane.y, point.z - k * plane.z);
     }
 
-    public static bool AgentInAgentFieldOfView(Agent agent1, Agent agent2, Vector3 r, Vector3 u) {
+    public static (float, float) Angle(Vector3 x, Vector3 z, Vector3 y, Vector3 v) {
+        Vector3 p = new Vector3(
+            x.x * v.x + x.y * v.y + x.z * v.z,
+            y.x * v.x + y.y * v.y + y.z * v.z,
+            z.x * v.x + z.y * v.y + z.z * v.z
+        );
+
+        float a_y = Mathf.Atan2(p.z, p.x);
+        a_y *= -1;
+
+        float a_z = Mathf.Atan2(p.y, p.x);
+
+        a_y = Mathf.Rad2Deg * a_y;
+        a_z = Mathf.Rad2Deg * a_z;
+
+        return (a_y, a_z);
+    }
+
+    public static bool AgentInAgentFieldOfView(Agent agent1, Agent agent2, Vector3 x, Vector3 z, Vector3 y) {
         if (!agent1.Equals(agent2) && Vector3.Distance(agent1.Position, agent2.Position) <= agent1.PerceptionRadius) {
-
-            float hangle = Mathf.Rad2Deg * Mathf.Acos(
-                Vector3.Dot(agent1.Direction, Vector3.ProjectOnPlane(agent2.Position - agent1.Position, u)) / 
-                (agent1.Direction.magnitude * (Vector3.ProjectOnPlane(agent2.Position - agent1.Position, u)).magnitude)
-            );
-            
-            float vangle = Mathf.Rad2Deg * Mathf.Acos(
-                Vector3.Dot(agent1.Direction, Vector3.ProjectOnPlane(agent2.Position - agent1.Position, r)) / 
-                (agent1.Direction.magnitude * (Vector3.ProjectOnPlane(agent2.Position - agent1.Position, r)).magnitude)
-            );
-
-            if (hangle <= agent1.HorizontalFOV / 2 && vangle <= agent1.VerticalFOV / 2) {
+            var (a_y, a_z) = Utils.Angle(x, z, y, agent2.Position - agent1.Position); 
+            if (Mathf.Abs(a_y) <= agent1.HorizontalFOV / 2 && Mathf.Abs(a_z) <= agent1.VerticalFOV / 2) {
                 return true;
             }
         }
-
         return false;
     }
 
