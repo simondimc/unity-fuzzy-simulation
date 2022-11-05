@@ -32,11 +32,14 @@ public class AgentManager : MonoBehaviour {
 
     private List<GameObject> agents;
     private List<Agent> agentsAgentScripts;
+    private int agentsCount;
+    private bool hasAgentsCount = false;
     private Octree octree;
 
-    private int kernel2n;
-    private int octreeLeafsKernel;
-    private int octreeNeighborsKernel;
+    private int threadsInGroup = 64;
+    private Dictionary<int, int> kernel2n;
+    private Dictionary<int, int> octreeLeafsKernel;
+    private Dictionary<int, int> octreeNeighborsKernel;
 
     private Texture3D octreeTexture;
 
@@ -72,6 +75,14 @@ public class AgentManager : MonoBehaviour {
 
         this.agentsAgentScripts = agents.Select(agent => agent.GetComponent<Agent>()).ToList();
 
+        this.agentsCount = this.agentsAgentScripts.Count;
+        this.hasAgentsCount = true;
+
+        while (this.threadsInGroup > this.agentsCount) {
+            this.threadsInGroup /= 2;
+        }
+        if (this.threadsInGroup <= 0) this.threadsInGroup = 1;
+
         this.FuzzyController.SetFuzzySetOperationType(this.FuzzySetOperationsMode);
 
         foreach (Agent agent in this.agentsAgentScripts) {
@@ -87,22 +98,34 @@ public class AgentManager : MonoBehaviour {
                 this.BuildGPUOctree();
                 break;
         }
+
+        this.CreateBuffers();
     }
 
     void OnEnable() {
-        if (this.NeighborhoodCalcMode == NeighborhoodCalcMode.GPUOctree ||
-            this.NeighborhoodCalcMode == NeighborhoodCalcMode.GPUNaiveN2) {
-            
-            this.positionBuffer = new ComputeBuffer(this.NumberToSpawn, 3 * 4);
-            this.directionBuffer = new ComputeBuffer(this.NumberToSpawn, 3 * 4);
-            this.perceptionRadiusBuffer = new ComputeBuffer(this.NumberToSpawn, 4);
-            this.horizontalFOVBuffer = new ComputeBuffer(this.NumberToSpawn, 4);
-            this.verticalFOVBuffer = new ComputeBuffer(this.NumberToSpawn, 4);
-            this.neighborhoodBuffer = new ComputeBuffer(this.NumberToSpawn * this.GPUNeighborhoodCount, 4);
+        if (this.hasAgentsCount) {
+            this.CreateBuffers();
         }
     }
 
     void OnDisable() {
+        this.DisposeBuffers();
+    }
+
+    private void CreateBuffers() {
+        if (this.NeighborhoodCalcMode == NeighborhoodCalcMode.GPUOctree ||
+            this.NeighborhoodCalcMode == NeighborhoodCalcMode.GPUNaiveN2) {
+            
+            this.positionBuffer = new ComputeBuffer(this.agentsCount, 3 * 4);
+            this.directionBuffer = new ComputeBuffer(this.agentsCount, 3 * 4);
+            this.perceptionRadiusBuffer = new ComputeBuffer(this.agentsCount, 4);
+            this.horizontalFOVBuffer = new ComputeBuffer(this.agentsCount, 4);
+            this.verticalFOVBuffer = new ComputeBuffer(this.agentsCount, 4);
+            this.neighborhoodBuffer = new ComputeBuffer(this.agentsCount * this.GPUNeighborhoodCount, 4);
+        }
+    }
+
+    private void DisposeBuffers() {
         if (this.NeighborhoodCalcMode == NeighborhoodCalcMode.GPUOctree ||
             this.NeighborhoodCalcMode == NeighborhoodCalcMode.GPUNaiveN2) {
             
@@ -206,26 +229,51 @@ public class AgentManager : MonoBehaviour {
     }
 
     private void SetupShaderGPU2n() {
-        this.kernel2n = this.NeighborhoodShader.FindKernel("Kernel2n");
+        this.kernel2n = new Dictionary<int, int>();
 
-        this.treeNeighborsTexture = new RenderTexture(this.NumberToSpawn, this.NumberToSpawn, 0, RenderTextureFormat.ARGBHalf, RenderTextureReadWrite.Linear)
+        this.kernel2n[64] = this.NeighborhoodShader.FindKernel("Kernel2n64");
+        this.kernel2n[32] = this.NeighborhoodShader.FindKernel("Kernel2n32");
+        this.kernel2n[16] = this.NeighborhoodShader.FindKernel("Kernel2n16");
+        this.kernel2n[8] = this.NeighborhoodShader.FindKernel("Kernel2n8");
+        this.kernel2n[4] = this.NeighborhoodShader.FindKernel("Kernel2n4");
+        this.kernel2n[2] = this.NeighborhoodShader.FindKernel("Kernel2n2");
+        this.kernel2n[1] = this.NeighborhoodShader.FindKernel("Kernel2n1");
+
+        this.treeNeighborsTexture = new RenderTexture(this.agentsCount, this.agentsCount, 0, RenderTextureFormat.ARGBHalf, RenderTextureReadWrite.Linear)
         {
             enableRandomWrite = true
         };
         this.treeNeighborsTexture.Create();
 
-        this.neighborhood = new int[this.NumberToSpawn * this.GPUNeighborhoodCount];
+        this.neighborhood = new int[this.agentsCount * this.GPUNeighborhoodCount];
         for (int i = 0; i < this.neighborhood.Length; i++) {
             this.neighborhood[i] = -1;
         }
 
-        this.NeighborhoodShader.SetInt("numberToSpawn", this.NumberToSpawn);
+        this.NeighborhoodShader.SetInt("agentsCount", this.agentsCount);
         this.NeighborhoodShader.SetInt("neighborhoodCount", this.GPUNeighborhoodCount);
     }
 
     private void SetupShaderGPUOctree() {
-        this.octreeLeafsKernel = this.NeighborhoodShader.FindKernel("OctreeLeafsKernel");
-        this.octreeNeighborsKernel = this.NeighborhoodShader.FindKernel("OctreeNeighborsKernel");
+        this.octreeLeafsKernel = new Dictionary<int, int>();
+
+        this.octreeLeafsKernel[64] = this.NeighborhoodShader.FindKernel("OctreeLeafsKernel64");
+        this.octreeLeafsKernel[32] = this.NeighborhoodShader.FindKernel("OctreeLeafsKernel32");
+        this.octreeLeafsKernel[16] = this.NeighborhoodShader.FindKernel("OctreeLeafsKernel16");
+        this.octreeLeafsKernel[8] = this.NeighborhoodShader.FindKernel("OctreeLeafsKernel8");
+        this.octreeLeafsKernel[4] = this.NeighborhoodShader.FindKernel("OctreeLeafsKernel4");
+        this.octreeLeafsKernel[2] = this.NeighborhoodShader.FindKernel("OctreeLeafsKernel2");
+        this.octreeLeafsKernel[1] = this.NeighborhoodShader.FindKernel("OctreeLeafsKernel1");
+
+        this.octreeNeighborsKernel = new Dictionary<int, int>();
+
+        this.octreeNeighborsKernel[64] = this.NeighborhoodShader.FindKernel("OctreeNeighborsKernel64");
+        this.octreeNeighborsKernel[32] = this.NeighborhoodShader.FindKernel("OctreeNeighborsKernel32");
+        this.octreeNeighborsKernel[16] = this.NeighborhoodShader.FindKernel("OctreeNeighborsKernel16");
+        this.octreeNeighborsKernel[8] = this.NeighborhoodShader.FindKernel("OctreeNeighborsKernel8");
+        this.octreeNeighborsKernel[4] = this.NeighborhoodShader.FindKernel("OctreeNeighborsKernel4");
+        this.octreeNeighborsKernel[2] = this.NeighborhoodShader.FindKernel("OctreeNeighborsKernel2");
+        this.octreeNeighborsKernel[1] = this.NeighborhoodShader.FindKernel("OctreeNeighborsKernel1");
 
         int b = 8;
         int n = 0;
@@ -243,24 +291,24 @@ public class AgentManager : MonoBehaviour {
 
         // depth = 4; 256 leaf cells
         // depth = 3; 64 leaf cells
-        this.treeLeafsTexture = new RenderTexture(this.treeLeafsCount, this.NumberToSpawn, 0, RenderTextureFormat.ARGBHalf, RenderTextureReadWrite.Linear)
+        this.treeLeafsTexture = new RenderTexture(this.treeLeafsCount, this.agentsCount, 0, RenderTextureFormat.ARGBHalf, RenderTextureReadWrite.Linear)
         {
             enableRandomWrite = true
         };
         this.treeLeafsTexture.Create();
 
-        this.treeNeighborsTexture = new RenderTexture(this.NumberToSpawn, this.NumberToSpawn, 0, RenderTextureFormat.ARGBHalf, RenderTextureReadWrite.Linear)
+        this.treeNeighborsTexture = new RenderTexture(this.agentsCount, this.agentsCount, 0, RenderTextureFormat.ARGBHalf, RenderTextureReadWrite.Linear)
         {
             enableRandomWrite = true
         };
         this.treeNeighborsTexture.Create();
 
-        this.neighborhood = new int[this.NumberToSpawn * this.GPUNeighborhoodCount];
+        this.neighborhood = new int[this.agentsCount * this.GPUNeighborhoodCount];
         for (int i = 0; i < this.neighborhood.Length; i++) {
             this.neighborhood[i] = -1;
         }
 
-        this.NeighborhoodShader.SetInt("numberToSpawn", this.NumberToSpawn);
+        this.NeighborhoodShader.SetInt("agentsCount", this.agentsCount);
         this.NeighborhoodShader.SetInt("neighborhoodCount", this.GPUNeighborhoodCount);
         this.NeighborhoodShader.SetInt("treeDepth", (int)this.GPUTreeDepth);
         this.NeighborhoodShader.SetInt("treeLeafsCount", this.treeLeafsCount);
@@ -332,16 +380,19 @@ public class AgentManager : MonoBehaviour {
 
         this.octreeTexture.Apply();
 
-        this.NeighborhoodShader.SetTexture(this.octreeLeafsKernel, "Octree", this.octreeTexture);
-        this.NeighborhoodShader.SetTexture(this.octreeNeighborsKernel, "Octree", this.octreeTexture);
+        int leafsKernel = this.octreeLeafsKernel[this.threadsInGroup];
+        int neighborsKernel = this.octreeNeighborsKernel[this.threadsInGroup];
+
+        this.NeighborhoodShader.SetTexture(leafsKernel, "Octree", this.octreeTexture);
+        this.NeighborhoodShader.SetTexture(neighborsKernel, "Octree", this.octreeTexture);
     }
 
     private void DispatchGPU2n() {
-        Vector3[] positions = new Vector3[this.NumberToSpawn];
-        Vector3[] directions = new Vector3[this.NumberToSpawn];
-        float[] perceptionRadiuses = new float[this.NumberToSpawn];
-        float[] horizontalFOVs = new float[this.NumberToSpawn];
-        float[] verticalFOVs = new float[this.NumberToSpawn];
+        Vector3[] positions = new Vector3[this.agentsCount];
+        Vector3[] directions = new Vector3[this.agentsCount];
+        float[] perceptionRadiuses = new float[this.agentsCount];
+        float[] horizontalFOVs = new float[this.agentsCount];
+        float[] verticalFOVs = new float[this.agentsCount];
 
         for (int i = 0; i < this.agentsAgentScripts.Count; i++) {
             Agent agent = this.agentsAgentScripts[i];
@@ -359,15 +410,17 @@ public class AgentManager : MonoBehaviour {
         this.horizontalFOVBuffer.SetData(horizontalFOVs);
         this.verticalFOVBuffer.SetData(verticalFOVs);
 
-        this.NeighborhoodShader.SetBuffer(this.kernel2n, "Position", this.positionBuffer);
-        this.NeighborhoodShader.SetBuffer(this.kernel2n, "Direction", this.directionBuffer);
-        this.NeighborhoodShader.SetBuffer(this.kernel2n, "PerceptionRadius", this.perceptionRadiusBuffer);
-        this.NeighborhoodShader.SetBuffer(this.kernel2n, "HorizontalFOV", this.horizontalFOVBuffer);
-        this.NeighborhoodShader.SetBuffer(this.kernel2n, "VerticalFOV", this.verticalFOVBuffer);
-        this.NeighborhoodShader.SetTexture(this.kernel2n, "TreeNeighbors", this.treeNeighborsTexture);
-        this.NeighborhoodShader.SetBuffer(this.kernel2n, "Neighborhood", this.neighborhoodBuffer);
+        int kernel = this.kernel2n[this.threadsInGroup];
 
-        this.NeighborhoodShader.Dispatch(this.kernel2n, this.NumberToSpawn / 64, 1, 1);
+        this.NeighborhoodShader.SetBuffer(kernel, "Position", this.positionBuffer);
+        this.NeighborhoodShader.SetBuffer(kernel, "Direction", this.directionBuffer);
+        this.NeighborhoodShader.SetBuffer(kernel, "PerceptionRadius", this.perceptionRadiusBuffer);
+        this.NeighborhoodShader.SetBuffer(kernel, "HorizontalFOV", this.horizontalFOVBuffer);
+        this.NeighborhoodShader.SetBuffer(kernel, "VerticalFOV", this.verticalFOVBuffer);
+        this.NeighborhoodShader.SetTexture(kernel, "TreeNeighbors", this.treeNeighborsTexture);
+        this.NeighborhoodShader.SetBuffer(kernel, "Neighborhood", this.neighborhoodBuffer);
+
+        this.NeighborhoodShader.Dispatch(kernel, Mathf.CeilToInt(1.0f * this.agentsCount / this.threadsInGroup), 1, 1);
 
         AsyncGPUReadback.Request(this.neighborhoodBuffer, this.SetNeighborhood);
     }
@@ -380,11 +433,11 @@ public class AgentManager : MonoBehaviour {
         float zmin = float.MaxValue;
         float zmax = float.MinValue;
 
-        Vector3[] positions = new Vector3[this.NumberToSpawn];
-        Vector3[] directions = new Vector3[this.NumberToSpawn];
-        float[] perceptionRadiuses = new float[this.NumberToSpawn];
-        float[] horizontalFOVs = new float[this.NumberToSpawn];
-        float[] verticalFOVs = new float[this.NumberToSpawn];
+        Vector3[] positions = new Vector3[this.agentsCount];
+        Vector3[] directions = new Vector3[this.agentsCount];
+        float[] perceptionRadiuses = new float[this.agentsCount];
+        float[] horizontalFOVs = new float[this.agentsCount];
+        float[] verticalFOVs = new float[this.agentsCount];
 
         for (int i = 0; i < this.agentsAgentScripts.Count; i++) {
             Agent agent = this.agentsAgentScripts[i];
@@ -416,22 +469,25 @@ public class AgentManager : MonoBehaviour {
         this.horizontalFOVBuffer.SetData(horizontalFOVs);
         this.verticalFOVBuffer.SetData(verticalFOVs);
 
-        this.NeighborhoodShader.SetBuffer(this.octreeLeafsKernel, "Position", this.positionBuffer);
-        this.NeighborhoodShader.SetTexture(this.octreeLeafsKernel, "TreeLeafs", this.treeLeafsTexture);
+        int leafsKernel = this.octreeLeafsKernel[this.threadsInGroup];
+        int neighborsKernel = this.octreeNeighborsKernel[this.threadsInGroup];
+
+        this.NeighborhoodShader.SetBuffer(leafsKernel, "Position", this.positionBuffer);
+        this.NeighborhoodShader.SetTexture(leafsKernel, "TreeLeafs", this.treeLeafsTexture);
 
 
-        this.NeighborhoodShader.SetBuffer(this.octreeNeighborsKernel, "Position", this.positionBuffer);
-        this.NeighborhoodShader.SetBuffer(this.octreeNeighborsKernel, "Direction", this.directionBuffer);
-        this.NeighborhoodShader.SetBuffer(this.octreeNeighborsKernel, "PerceptionRadius", this.perceptionRadiusBuffer);
-        this.NeighborhoodShader.SetBuffer(this.octreeNeighborsKernel, "HorizontalFOV", this.horizontalFOVBuffer);
-        this.NeighborhoodShader.SetBuffer(this.octreeNeighborsKernel, "VerticalFOV", this.verticalFOVBuffer);
-        this.NeighborhoodShader.SetTexture(this.octreeNeighborsKernel, "TreeLeafs", this.treeLeafsTexture);
-        this.NeighborhoodShader.SetTexture(this.octreeNeighborsKernel, "TreeNeighbors", this.treeNeighborsTexture);
-        this.NeighborhoodShader.SetBuffer(this.octreeNeighborsKernel, "Neighborhood", this.neighborhoodBuffer);
+        this.NeighborhoodShader.SetBuffer(neighborsKernel, "Position", this.positionBuffer);
+        this.NeighborhoodShader.SetBuffer(neighborsKernel, "Direction", this.directionBuffer);
+        this.NeighborhoodShader.SetBuffer(neighborsKernel, "PerceptionRadius", this.perceptionRadiusBuffer);
+        this.NeighborhoodShader.SetBuffer(neighborsKernel, "HorizontalFOV", this.horizontalFOVBuffer);
+        this.NeighborhoodShader.SetBuffer(neighborsKernel, "VerticalFOV", this.verticalFOVBuffer);
+        this.NeighborhoodShader.SetTexture(neighborsKernel, "TreeLeafs", this.treeLeafsTexture);
+        this.NeighborhoodShader.SetTexture(neighborsKernel, "TreeNeighbors", this.treeNeighborsTexture);
+        this.NeighborhoodShader.SetBuffer(neighborsKernel, "Neighborhood", this.neighborhoodBuffer);
 
 
-        this.NeighborhoodShader.Dispatch(this.octreeLeafsKernel, this.NumberToSpawn / 64, 1, 1);
-        this.NeighborhoodShader.Dispatch(this.octreeNeighborsKernel, this.NumberToSpawn / 64, 1, 1);
+        this.NeighborhoodShader.Dispatch(leafsKernel, Mathf.CeilToInt(1.0f * this.agentsCount / this.threadsInGroup), 1, 1);
+        this.NeighborhoodShader.Dispatch(neighborsKernel, Mathf.CeilToInt(1.0f * this.agentsCount / this.threadsInGroup), 1, 1);
 
         AsyncGPUReadback.Request(this.neighborhoodBuffer, this.SetNeighborhood);
     }

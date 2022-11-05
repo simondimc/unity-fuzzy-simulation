@@ -1,6 +1,26 @@
-#pragma kernel Kernel2n
-#pragma kernel OctreeLeafsKernel
-#pragma kernel OctreeNeighborsKernel
+#pragma kernel Kernel2n64
+#pragma kernel Kernel2n32
+#pragma kernel Kernel2n16
+#pragma kernel Kernel2n8
+#pragma kernel Kernel2n4
+#pragma kernel Kernel2n2
+#pragma kernel Kernel2n1
+
+#pragma kernel OctreeLeafsKernel64
+#pragma kernel OctreeLeafsKernel32
+#pragma kernel OctreeLeafsKernel16
+#pragma kernel OctreeLeafsKernel8
+#pragma kernel OctreeLeafsKernel4
+#pragma kernel OctreeLeafsKernel2
+#pragma kernel OctreeLeafsKernel1
+
+#pragma kernel OctreeNeighborsKernel64
+#pragma kernel OctreeNeighborsKernel32
+#pragma kernel OctreeNeighborsKernel16
+#pragma kernel OctreeNeighborsKernel8
+#pragma kernel OctreeNeighborsKernel4
+#pragma kernel OctreeNeighborsKernel2
+#pragma kernel OctreeNeighborsKernel1
 
 RWStructuredBuffer<float3> Position;
 RWStructuredBuffer<float3> Direction;
@@ -20,7 +40,7 @@ float ymax;
 float zmin;
 float zmax;
 
-uint numberToSpawn;
+uint agentsCount;
 uint neighborhoodCount;
 uint axis;
 uint treeDepth;
@@ -28,8 +48,8 @@ uint treeLeafsCount;
 
 RWStructuredBuffer<int> Neighborhood;
 
-[numthreads(64, 1, 1)]
-void Kernel2n (uint3 id : SV_DispatchThreadID) {
+
+void Kernel2n (uint3 id) {
 
     float3 pos = Position[id.x];
     float3 dir = Direction[id.x];
@@ -41,7 +61,7 @@ void Kernel2n (uint3 id : SV_DispatchThreadID) {
     float3 z = normalize(cross(x, float3(0, 1, 0)));
     float3 y = normalize(cross(z, x));
 
-    for (uint i = 0; i < numberToSpawn; i++) {
+    for (uint i = 0; i < agentsCount; i++) {
         TreeNeighbors[uint2(id.x, i)] = half4(0, 0, 0, 0);
 
         float3 npos = Position[i];
@@ -74,7 +94,7 @@ void Kernel2n (uint3 id : SV_DispatchThreadID) {
     uint ni = 0;
     uint ai = 0;
 
-    while (ai < numberToSpawn && ni < neighborhoodCount) {
+    while (ai < agentsCount && ni < neighborhoodCount) {
         if (TreeNeighbors[uint2(id.x, ai)].x > 0 && ai != id.x) {
             Neighborhood[id.x * neighborhoodCount + ni] = ai;
             ni++;
@@ -84,7 +104,42 @@ void Kernel2n (uint3 id : SV_DispatchThreadID) {
 }
 
 [numthreads(64, 1, 1)]
-void OctreeLeafsKernel (uint3 id : SV_DispatchThreadID) {
+void Kernel2n64 (uint3 id : SV_DispatchThreadID) {
+    Kernel2n(id);
+}
+
+[numthreads(32, 1, 1)]
+void Kernel2n32 (uint3 id : SV_DispatchThreadID) {
+    Kernel2n(id);
+}
+
+[numthreads(16, 1, 1)]
+void Kernel2n16 (uint3 id : SV_DispatchThreadID) {
+    Kernel2n(id);
+}
+
+[numthreads(8, 1, 1)]
+void Kernel2n8 (uint3 id : SV_DispatchThreadID) {
+    Kernel2n(id);
+}
+
+[numthreads(4, 1, 1)]
+void Kernel2n4 (uint3 id : SV_DispatchThreadID) {
+    Kernel2n(id);
+}
+
+[numthreads(2, 1, 1)]
+void Kernel2n2 (uint3 id : SV_DispatchThreadID) {
+    Kernel2n(id);
+}
+
+[numthreads(1, 1, 1)]
+void Kernel2n1 (uint3 id : SV_DispatchThreadID) {
+    Kernel2n(id);
+}
+
+
+void OctreeLeafsKernel (uint3 id) {
 
     for (uint i = 0; i < treeLeafsCount; i++) {
         TreeLeafs[uint2(i, id.x)] = half4(0, 0, 0, 0);
@@ -106,7 +161,42 @@ void OctreeLeafsKernel (uint3 id : SV_DispatchThreadID) {
 }
 
 [numthreads(64, 1, 1)]
-void OctreeNeighborsKernel (uint3 id : SV_DispatchThreadID) {
+void OctreeLeafsKernel64 (uint3 id : SV_DispatchThreadID) {
+    OctreeLeafsKernel(id);
+}
+
+[numthreads(32, 1, 1)]
+void OctreeLeafsKernel32 (uint3 id : SV_DispatchThreadID) {
+    OctreeLeafsKernel(id);
+}
+
+[numthreads(16, 1, 1)]
+void OctreeLeafsKernel16 (uint3 id : SV_DispatchThreadID) {
+    OctreeLeafsKernel(id);
+}
+
+[numthreads(8, 1, 1)]
+void OctreeLeafsKernel8 (uint3 id : SV_DispatchThreadID) {
+    OctreeLeafsKernel(id);
+}
+
+[numthreads(4, 1, 1)]
+void OctreeLeafsKernel4 (uint3 id : SV_DispatchThreadID) {
+    OctreeLeafsKernel(id);
+}
+
+[numthreads(2, 1, 1)]
+void OctreeLeafsKernel2 (uint3 id : SV_DispatchThreadID) {
+    OctreeLeafsKernel(id);
+}
+
+[numthreads(1, 1, 1)]
+void OctreeLeafsKernel1 (uint3 id : SV_DispatchThreadID) {
+    OctreeLeafsKernel(id);
+}
+
+
+void OctreeNeighborsKernel (uint3 id) {
 
     float3 pos = Position[id.x];
     float3 dir = Direction[id.x];
@@ -128,11 +218,11 @@ void OctreeNeighborsKernel (uint3 id : SV_DispatchThreadID) {
         I.x = Octree[P].x;
     }
 
-    for (uint i = 0; i < numberToSpawn; i++) {
+    for (uint i = 0; i < agentsCount; i++) {
         TreeNeighbors[uint2(id.x, i)] = half4(0, 0, 0, 0);
     }
 
-    for (uint j = 0; j < numberToSpawn; j++) {
+    for (uint j = 0; j < agentsCount; j++) {
         TreeNeighbors[uint2(id.x, j)] = TreeLeafs[uint2(I.x, j)];
     }
 
@@ -143,7 +233,7 @@ void OctreeNeighborsKernel (uint3 id : SV_DispatchThreadID) {
     uint ni = 0;
     uint ai = 0;
 
-    while (ai < numberToSpawn && ni < neighborhoodCount) {
+    while (ai < agentsCount && ni < neighborhoodCount) {
         if (TreeNeighbors[uint2(id.x, ai)].x > 0 && ai != id.x) {
             float3 npos = Position[ai];
 
@@ -170,4 +260,39 @@ void OctreeNeighborsKernel (uint3 id : SV_DispatchThreadID) {
         }
         ai++;
     }
+}
+
+[numthreads(64, 1, 1)]
+void OctreeNeighborsKernel64 (uint3 id : SV_DispatchThreadID) {
+    OctreeNeighborsKernel(id);
+}
+
+[numthreads(32, 1, 1)]
+void OctreeNeighborsKernel32 (uint3 id : SV_DispatchThreadID) {
+    OctreeNeighborsKernel(id);
+}
+
+[numthreads(16, 1, 1)]
+void OctreeNeighborsKernel16 (uint3 id : SV_DispatchThreadID) {
+    OctreeNeighborsKernel(id);
+}
+
+[numthreads(8, 1, 1)]
+void OctreeNeighborsKernel8 (uint3 id : SV_DispatchThreadID) {
+    OctreeNeighborsKernel(id);
+}
+
+[numthreads(4, 1, 1)]
+void OctreeNeighborsKernel4 (uint3 id : SV_DispatchThreadID) {
+    OctreeNeighborsKernel(id);
+}
+
+[numthreads(2, 1, 1)]
+void OctreeNeighborsKernel2 (uint3 id : SV_DispatchThreadID) {
+    OctreeNeighborsKernel(id);
+}
+
+[numthreads(1, 1, 1)]
+void OctreeNeighborsKernel1 (uint3 id : SV_DispatchThreadID) {
+    OctreeNeighborsKernel(id);
 }
