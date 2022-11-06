@@ -1,4 +1,4 @@
-# Fuzzy Simulation plugin for Unity
+# Fuzzy Simulation package for Unity
 
 Fuzzy logic based framework for Unity game engine that offers visual programming of collective behaviour.
 
